@@ -13,14 +13,14 @@ repos:
       # Checks for .terraform/providers which is only present after a successful init.
       - id: terraform-init-check-root
         name: Check terraform init (root module)
-        entry: bash -c '[ -d terraform/.terraform/providers ] || { echo "ERROR: Run \"terraform init -backend-config=backends/<team>-<env>.hcl\" in terraform/ before committing."; exit 1; }'
+        entry: "bash -c 'test -d terraform/.terraform/providers || (echo \"ERROR: terraform init not run in terraform/ — run: terraform init -backend-config=backends/<team>-<env>.hcl\" && exit 1)'"
         language: system
         files: ^terraform/(?!bootstrap/).*\.tf$
         pass_filenames: false
 
       - id: terraform-init-check-bootstrap
         name: Check terraform init (bootstrap)
-        entry: bash -c '[ -d terraform/bootstrap/.terraform/providers ] || { echo "ERROR: Run \"terraform init\" in terraform/bootstrap/ before committing."; exit 1; }'
+        entry: "bash -c 'test -d terraform/bootstrap/.terraform/providers || (echo \"ERROR: terraform init not run in terraform/bootstrap/ — run: terraform -chdir=terraform/bootstrap init\" && exit 1)'"
         language: system
         files: ^terraform/bootstrap/.*\.tf$
         pass_filenames: false

@@ -151,6 +151,45 @@ The NLB DNS name is injected into the Ansible inventory as `k8s_api_endpoint` an
 - `session-manager-plugin` installed (for SSM-based Ansible access)
 - Ansible installed locally
 - `jq` installed
+- `pre-commit` installed (`pip install pre-commit` or `brew install pre-commit`)
+- `tflint` installed (`brew install tflint`)
+- `terraform-docs` installed (`brew install terraform-docs`)
+
+### Pre-commit hooks (one time per clone)
+
+Pre-commit hooks enforce formatting, validation, linting, and documentation on every commit. Enable them after cloning:
+
+```bash
+pre-commit install
+```
+
+Hooks that run on every `git commit`:
+
+| Hook | Tool | What it does |
+|---|---|---|
+| `terraform-fmt` | `terraform fmt` | Auto-formats all `.tf` files recursively |
+| `terraform-init-check-*` | bash | Fails early if `terraform init` has not been run |
+| `terraform-validate-*` | `terraform validate` | Validates root module and bootstrap module |
+| `tflint` | `tflint` | Lints all modules using the AWS ruleset |
+| `terraform-docs` | `terraform-docs` | Injects variable/output tables into `terraform/README.md` |
+
+Before your first commit, run `terraform init` in the relevant module directories so the init-check hooks pass:
+
+```bash
+# Root module (after bootstrap buckets exist and backends/*.hcl are filled in)
+terraform -chdir=terraform init -backend-config=backends/platform-dev.hcl
+
+# Bootstrap module
+terraform -chdir=terraform/bootstrap init
+```
+
+To run all hooks manually against the full codebase without committing:
+
+```bash
+pre-commit run --all-files
+```
+
+---
 
 ### Step 1 — Bootstrap state buckets (one time per environment tier)
 
