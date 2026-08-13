@@ -1,0 +1,58 @@
+repos:
+  - repo: local
+    hooks:
+      # Formats all Terraform files recursively from the repo root
+      - id: terraform-fmt
+        name: Terraform Format
+        entry: terraform fmt -recursive
+        language: system
+        files: \.tf$
+        pass_filenames: false
+
+      # Guards: fail early with a clear message if terraform init has not been run.
+      # Checks for .terraform/providers which is only present after a successful init.
+      - id: terraform-init-check-root
+        name: Check terraform init (root module)
+        entry: bash -c '[ -d terraform/.terraform/providers ] || { echo "ERROR: Run \"terraform init -backend-config=backends/<team>-<env>.hcl\" in terraform/ before committing."; exit 1; }'
+        language: system
+        files: ^terraform/(?!bootstrap/).*\.tf$
+        pass_filenames: false
+
+      - id: terraform-init-check-bootstrap
+        name: Check terraform init (bootstrap)
+        entry: bash -c '[ -d terraform/bootstrap/.terraform/providers ] || { echo "ERROR: Run \"terraform init\" in terraform/bootstrap/ before committing."; exit 1; }'
+        language: system
+        files: ^terraform/bootstrap/.*\.tf$
+        pass_filenames: false
+
+      # Validates the root module
+      - id: terraform-validate-root
+        name: Terraform Validate (root module)
+        entry: terraform -chdir=terraform validate
+        language: system
+        files: ^terraform/(?!bootstrap/).*\.tf$
+        pass_filenames: false
+
+      # Validates the bootstrap module separately (its own providers/state)
+      - id: terraform-validate-bootstrap
+        name: Terraform Validate (bootstrap)
+        entry: terraform -chdir=terraform/bootstrap validate
+        language: system
+        files: ^terraform/bootstrap/.*\.tf$
+        pass_filenames: false
+
+      # Lints all modules recursively using the aws ruleset
+      - id: tflint
+        name: TFLint
+        entry: bash -c 'cd terraform && tflint --config=../.tflint.hcl --recursive'
+        language: system
+        files: \.tf$
+        pass_filenames: false
+
+      # Generates variable/output documentation for the root module
+      - id: terraform-docs
+        name: Terraform Docs
+        entry: terraform-docs markdown table --output-file README.md --output-mode inject terraform
+        language: system
+        files: ^terraform/.*\.tf$
+        pass_filenames: false

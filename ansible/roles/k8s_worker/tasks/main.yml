@@ -1,0 +1,15 @@
+---
+# roles/k8s_worker/tasks/main.yml
+
+- name: Check if already joined as worker
+  stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: worker_stat
+
+- name: Join worker nodes
+  shell: "{{ hostvars[groups['k8s_manager'][0]]['join_command'] }}"
+  when: 
+    - inventory_hostname in groups['k8s_worker']
+    - not worker_stat.stat.exists
+  register: join_result
+  failed_when: join_result.rc != 0 and 'already exists' not in join_result.stderr

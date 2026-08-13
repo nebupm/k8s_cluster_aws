@@ -1,0 +1,36 @@
+---
+# site.yml
+
+- name: Verify connectivity to all nodes
+  hosts: k8s_cluster
+  gather_facts: no
+  tasks:
+    - name: Ping nodes
+      ping:
+
+- name: Prepare all nodes
+  hosts: k8s_cluster
+  become: yes
+  roles:
+    - common
+
+- name: Initialize first manager
+  hosts: "{{ groups['k8s_manager'][0] }}"
+  become: yes
+  roles:
+    - k8s_control_plane
+
+- name: Join additional managers
+  hosts: k8s_manager
+  become: yes
+  tasks:
+    - name: Ensure k8s_control_plane role runs for non-m1 managers
+      include_role:
+        name: k8s_control_plane
+      when: inventory_hostname != groups['k8s_manager'][0]
+
+- name: Setup worker nodes
+  hosts: k8s_worker
+  become: yes
+  roles:
+    - k8s_worker
