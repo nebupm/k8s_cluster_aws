@@ -1,0 +1,71 @@
+name: Deploy Environment (Reusable Workflow)
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: string
+      terraform_version:
+        description: 'Terraform version to use'
+        required: true
+        type: string
+      ci_run_id:
+        description: 'CI workflow run ID for artifact retrieval'
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read # Allows GITHUB_TOKEN to clone your code
+      id-token: write # Required by the nested deploy job to fetch AWS STS tokens
+      pull-requests: write # Required by the nested deploy job
+
+    env:
+      TF_LOG: INFO
+      TF_INPUT: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Preflight - verify backend config exists
+        run: |
+          BACKEND_CONFIG="./backends/${{ inputs.environment }}.hcl"
+          if [ ! -f "$BACKEND_CONFIG" ]; then
+            echo "::error::Backend config '$BACKEND_CONFIG' not found."
+            echo "::error::Environment '${{ inputs.environment }}' has not been bootstrapped."
+            echo "::error::Create its state bucket via the create_backend_storage stack, then add $BACKEND_CONFIG."
+            exit 1
+          fi
+          echo "Found $BACKEND_CONFIG"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+          terraform_wrapper: false
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/${{ vars.AWS_ROLE_NAME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+
+      - name: Terraform Init
+        run: terraform init -backend-config="./backends/${{ inputs.environment }}.hcl"
+
+      - name: Download Plan Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tf-plan-${{ inputs.environment }}-${{ inputs.ci_run_id }}
+          run-id: ${{ inputs.ci_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Terraform Apply (from plan)
+        run: terraform apply tf.plan

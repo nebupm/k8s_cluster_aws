@@ -1,0 +1,94 @@
+name: "Destroy Environment (Manual Trigger)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: 'Select the environment to destroy'
+        required: true
+        type: choice
+        default: 'dev'
+        options:
+          - dev
+          - staging
+          - prod
+          - all # Option to destroy every environment in one run
+
+permissions:
+  id-token: write 
+  contents: read
+
+jobs:
+  # This helper job dynamically sets up the matrix array based on your selection
+  setup-matrix:
+    runs-on: ubuntu-latest
+    if: github.actor == 'nebupm'
+    outputs:
+      environments: ${{ steps.set-env.outputs.result }}
+    steps:
+      # NEW: Security Pre-Check Step
+      - name: Verify Authorized Actor
+        run: |
+          if [ "${{ github.actor }}" != "nebupm" ]; then
+            echo "::error::🚨 ACCESS DENIED: User '${{ github.actor }}' is not authorized to trigger infrastructure destruction!"
+            exit 1
+          fi
+          echo "✅ Authorization verified for user: ${{ github.actor }}"
+      - name: Determine Target Environments
+        id: set-env
+        run: |
+          if [ "${{ github.event.inputs.target_environment }}" = "all" ]; then
+            echo 'result=["dev", "staging", "prod"]' >> $GITHUB_OUTPUT
+          else
+            echo 'result=["${{ github.event.inputs.target_environment }}"]' >> $GITHUB_OUTPUT
+          fi
+  destroy:
+    needs: setup-matrix
+    runs-on: ubuntu-latest
+    environment: ${{ matrix.env_name }} # Dynamically links vars.AWS_* per environment
+    
+    strategy:
+      matrix:
+        env_name: ${{ fromJson(needs.setup-matrix.outputs.environments) }}
+      max-parallel: 1 # Ensures environments destroy one after another safely
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Preflight: an environment with no backend config was never bootstrapped,
+      # so there is nothing to destroy. Skip it cleanly instead of failing the run
+      # (matters most for the "all" option, which may include un-bootstrapped envs).
+      - name: Preflight - verify backend config exists
+        id: preflight
+        run: |
+          BACKEND_CONFIG="./backends/${{ matrix.env_name }}.hcl"
+          if [ ! -f "$BACKEND_CONFIG" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Backend config '$BACKEND_CONFIG' not found — '${{ matrix.env_name }}' was never bootstrapped. Nothing to destroy; skipping."
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "Found $BACKEND_CONFIG — proceeding with destroy of '${{ matrix.env_name }}'"
+          fi
+
+      - name: Configure AWS Credentials
+        if: steps.preflight.outputs.ready == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # Pulls variables cleanly from the matched GitHub Environment context
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/${{ vars.AWS_ROLE_NAME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Setup Terraform
+        if: steps.preflight.outputs.ready == 'true'
+        uses: hashicorp/setup-terraform@v3.1.2 # Native Node 24 support
+        with:
+          terraform_version: 1.13.0
+
+      - name: Terraform Init
+        if: steps.preflight.outputs.ready == 'true'
+        run: terraform init -backend-config="./backends/${{ matrix.env_name }}.hcl"
+
+      - name: Terraform Destroy
+        if: steps.preflight.outputs.ready == 'true'
+        run: terraform destroy -var-file="./environments/${{ matrix.env_name }}.tfvars" -auto-approve

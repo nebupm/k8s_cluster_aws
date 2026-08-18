@@ -1,5 +1,6 @@
 variable "cluster_name" {
-  type = string
+  description = "Cluster name — used for IAM role and instance profile names."
+  type        = string
 }
 
 resource "aws_iam_role" "node" {

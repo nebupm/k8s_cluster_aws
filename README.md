@@ -147,13 +147,73 @@ The NLB DNS name is injected into the Ansible inventory as `k8s_api_endpoint` an
 ### Prerequisites
 
 - Terraform >= 1.13
-- AWS CLI configured (`aws configure`)
-- `session-manager-plugin` installed (for SSM-based Ansible access)
+- AWS CLI configured with SSO (`aws configure sso`)
+- `session-manager-plugin` installed — see below
 - Ansible installed locally
 - `jq` installed
 - `pre-commit` installed (`pip install pre-commit` or `brew install pre-commit`)
 - `tflint` installed (`brew install tflint`)
 - `terraform-docs` installed (`brew install terraform-docs`)
+
+### Install session-manager-plugin
+
+Required for Ansible to SSH to nodes in private subnets via AWS SSM (no bastion host).
+
+**macOS:**
+
+```bash
+brew install --cask session-manager-plugin
+```
+
+Or manually via the AWS installer:
+
+```bash
+curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/mac/session-manager-plugin.pkg" \
+  -o session-manager-plugin.pkg
+sudo installer -pkg session-manager-plugin.pkg -target /
+```
+
+**Linux (Debian/Ubuntu):**
+
+```bash
+curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" \
+  -o session-manager-plugin.deb
+sudo dpkg -i session-manager-plugin.deb
+```
+
+**Linux (RHEL/Amazon Linux):**
+
+```bash
+curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/linux_64bit/session-manager-plugin.rpm" \
+  -o session-manager-plugin.rpm
+sudo yum install -y session-manager-plugin.rpm
+```
+
+Verify:
+
+```bash
+session-manager-plugin --version
+```
+
+---
+
+### Local authentication (SSO / JWT short-lived tokens)
+
+This project uses AWS IAM Identity Center (SSO) for local runs. Both the Terraform provider and the S3 backend pick up credentials from the `AWS_PROFILE` environment variable, so set it once before running any Terraform commands:
+
+```bash
+export AWS_PROFILE=ntegra-sso-adm
+aws sso login --profile ntegra-sso-adm
+```
+
+| Context | Auth mechanism |
+|---|---|
+| Local runs | `AWS_PROFILE` env var → SSO JWT tokens via `aws sso login` |
+| `terraform init` (S3 backend) | `AWS_PROFILE` picked up automatically |
+| `terraform plan/apply` (provider) | `AWS_PROFILE` picked up when `aws_profile = null` in tfvars, or explicit `aws_profile` value overrides it |
+| CI/CD pipelines | IAM role attached to the runner — `AWS_PROFILE` not set |
+
+> Do not hardcode the profile in `backends/*.hcl` — CI/CD runners authenticate via IAM role and do not have a named profile.
 
 ### Pre-commit hooks (one time per clone)
 
@@ -209,14 +269,27 @@ terraform apply -var="environment=prod" -var="aws_region=eu-west-2" -var="tag_wh
 
 Copy each `state_bucket_name` output into the corresponding `backends/<team>-<env>.hcl` files.
 
-### Step 2 — Upload your SSH key pair to AWS (one time)
+### Step 2 — SSH key management
 
-```bash
-aws ec2 import-key-pair \
-  --key-name ntegra-k8s-key \
-  --public-key-material fileb://~/.ssh/ntegra-k8s-key.pub \
-  --region eu-west-2
-```
+SSH keys are **fully managed by Terraform** — no manual key generation or AWS Console steps required.
+
+On `terraform apply`, the `keys` module:
+1. Generates an ED25519 key pair using the `tls` provider
+2. Uploads the public key to AWS as an EC2 Key Pair (named after the cluster)
+3. Stores the private key in **AWS Systems Manager Parameter Store** as a `SecureString` at `/<cluster_name>/ssh-private-key`
+
+The private key never touches the local filesystem during provisioning. `generate_inventory.sh` retrieves it from SSM at inventory generation time and saves it to `~/.ssh/<cluster_name>` (outside the repo, `chmod 600`).
+
+**Keys are stable across scale operations.** Terraform is idempotent — the key resources are created once and recorded in state. Adding or removing nodes in `tfvars` and running `terraform apply` only affects the `aws_instance` resources; the key pair and SSM parameter show `no changes` every time.
+
+**Cost:** SSM Parameter Store SecureString parameters are **free** for standard tier (under 4 KB). ED25519 private keys are ~400 bytes. This costs nothing, unlike Secrets Manager ($0.40/secret/month).
+
+**What is never committed to git:**
+- Private keys (`*.pem`, `*.key`, `id_ed25519*`, etc.)
+- Generated Ansible inventories (`ansible/inventory-*.ini`)
+- Kubeconfig files (`*.kubeconfig`)
+
+> **Security note:** The `tls_private_key` resource stores the private key in the Terraform state file. The state is encrypted at rest in S3 (AES256). Access to the state bucket should be restricted via IAM to those who need it.
 
 ### Step 3 — Provision a cluster
 

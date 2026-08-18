@@ -10,10 +10,4 @@ terraform {
       version = "~> 4.0"
     }
   }
-
-  backend "s3" {
-    # Populated per cluster at init time:
-    # terraform init -backend-config=backends/<team>-<env>.hcl
-    use_lockfile = true
-  }
 }

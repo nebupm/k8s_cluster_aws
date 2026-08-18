@@ -55,11 +55,6 @@ variable "private_subnet_cidrs" {
   description = "CIDR blocks for private subnets (one per AZ, used by nodes)."
 }
 
-variable "ssh_key_name" {
-  type        = string
-  description = "Name of the EC2 key pair for node access."
-}
-
 variable "ssh_allowed_cidr" {
   type        = string
   default     = "0.0.0.0/0"

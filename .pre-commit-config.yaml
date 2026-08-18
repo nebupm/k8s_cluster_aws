@@ -9,43 +9,33 @@ repos:
         files: \.tf$
         pass_filenames: false
 
-      # Guards: fail early with a clear message if terraform init has not been run.
-      # Checks for .terraform/providers which is only present after a successful init.
-      - id: terraform-init-check-root
-        name: Check terraform init (root module)
-        entry: "bash -c 'test -d terraform/.terraform/providers || (echo \"ERROR: terraform init not run in terraform/ — run: terraform init -backend-config=backends/<team>-<env>.hcl\" && exit 1)'"
-        language: system
-        files: ^terraform/(?!bootstrap/).*\.tf$
-        pass_filenames: false
-
-      - id: terraform-init-check-bootstrap
-        name: Check terraform init (bootstrap)
-        entry: "bash -c 'test -d terraform/bootstrap/.terraform/providers || (echo \"ERROR: terraform init not run in terraform/bootstrap/ — run: terraform -chdir=terraform/bootstrap init\" && exit 1)'"
-        language: system
-        files: ^terraform/bootstrap/.*\.tf$
-        pass_filenames: false
-
-      # Validates the root module
+      # Validates the root module.
+      # Skips gracefully if terraform init has not been run (first commit / fresh clone).
+      # To enable: terraform init -backend-config=backends/<team>-<env>.hcl
       - id: terraform-validate-root
         name: Terraform Validate (root module)
-        entry: terraform -chdir=terraform validate
+        entry: "bash -c 'if test -d terraform/.terraform/providers; then terraform -chdir=terraform validate; else echo \"SKIP: terraform not initialised in terraform/ — run terraform init to enable validation.\"; fi'"
         language: system
         files: ^terraform/(?!bootstrap/).*\.tf$
         pass_filenames: false
 
-      # Validates the bootstrap module separately (its own providers/state)
+      # Validates the bootstrap module.
+      # Skips gracefully if terraform init has not been run.
+      # To enable: terraform -chdir=terraform/bootstrap init
       - id: terraform-validate-bootstrap
         name: Terraform Validate (bootstrap)
-        entry: terraform -chdir=terraform/bootstrap validate
+        entry: "bash -c 'if test -d terraform/bootstrap/.terraform/providers; then terraform -chdir=terraform/bootstrap validate; else echo \"SKIP: terraform not initialised in terraform/bootstrap/ — run terraform init to enable validation.\"; fi'"
         language: system
         files: ^terraform/bootstrap/.*\.tf$
         pass_filenames: false
 
-      # Lints all modules recursively using the aws ruleset
+      # Lints all modules recursively using the aws ruleset.
+      # Uses a wrapper script to pass an absolute path to .tflint.hcl — required because
+      # tflint --recursive resolves --config relative to each subdirectory it descends into.
       - id: tflint
         name: TFLint
-        entry: bash -c 'cd terraform && tflint --config=../.tflint.hcl --recursive'
-        language: system
+        entry: terraform/scripts/run_tflint.sh
+        language: script
         files: \.tf$
         pass_filenames: false
 

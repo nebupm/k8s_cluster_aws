@@ -1,3 +1,9 @@
+module "keys" {
+  source = "./modules/keys"
+
+  cluster_name = var.cluster_name
+}
+
 module "vpc" {
   source = "./modules/vpc"
 
@@ -31,7 +37,7 @@ module "compute" {
   private_subnet_ids    = module.vpc.private_subnet_ids
   sg_cp_id              = module.security_groups.sg_cp_id
   sg_worker_id          = module.security_groups.sg_worker_id
-  key_name              = var.ssh_key_name
+  key_name              = module.keys.key_name
   instance_profile_name = module.iam.instance_profile_name
 }
 

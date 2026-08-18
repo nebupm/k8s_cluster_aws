@@ -1,7 +1,9 @@
 output "instance_profile_name" {
-  value = aws_iam_instance_profile.node.name
+  description = "IAM instance profile name — pass to the compute module."
+  value       = aws_iam_instance_profile.node.name
 }
 
 output "instance_profile_arn" {
-  value = aws_iam_instance_profile.node.arn
+  description = "IAM instance profile ARN."
+  value       = aws_iam_instance_profile.node.arn
 }

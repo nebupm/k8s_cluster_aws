@@ -1,3 +1,8 @@
+output "ssh_key_ssm_parameter" {
+  description = "SSM Parameter Store path for the cluster SSH private key — used by generate_inventory.sh."
+  value       = module.keys.ssm_parameter_name
+}
+
 output "cluster_name" {
   description = "Cluster name — used by generate_inventory.sh to name the inventory file."
   value       = var.cluster_name
@@ -34,5 +39,6 @@ output "worker_instance_ids" {
 }
 
 output "vpc_id" {
-  value = module.vpc.vpc_id
+  description = "VPC ID for the cluster."
+  value       = module.vpc.vpc_id
 }

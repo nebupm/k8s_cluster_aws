@@ -5,6 +5,7 @@
 | ---- | ------- |
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.13.0 |
 | <a name="requirement_aws"></a> [aws](#requirement\_aws) | ~> 5.0 |
+| <a name="requirement_tls"></a> [tls](#requirement\_tls) | ~> 4.0 |
 
 ## Providers
 
@@ -16,6 +17,7 @@ No providers.
 | ---- | ------ | ------- |
 | <a name="module_compute"></a> [compute](#module\_compute) | ./modules/compute | n/a |
 | <a name="module_iam"></a> [iam](#module\_iam) | ./modules/iam | n/a |
+| <a name="module_keys"></a> [keys](#module\_keys) | ./modules/keys | n/a |
 | <a name="module_load_balancer"></a> [load\_balancer](#module\_load\_balancer) | ./modules/load_balancer | n/a |
 | <a name="module_security_groups"></a> [security\_groups](#module\_security\_groups) | ./modules/security_groups | n/a |
 | <a name="module_vpc"></a> [vpc](#module\_vpc) | ./modules/vpc | n/a |
@@ -38,7 +40,6 @@ No resources.
 | <a name="input_private_subnet_cidrs"></a> [private\_subnet\_cidrs](#input\_private\_subnet\_cidrs) | CIDR blocks for private subnets (one per AZ, used by nodes). | `list(string)` | n/a | yes |
 | <a name="input_public_subnet_cidrs"></a> [public\_subnet\_cidrs](#input\_public\_subnet\_cidrs) | CIDR blocks for public subnets (one per AZ, used by ALB). | `list(string)` | n/a | yes |
 | <a name="input_ssh_allowed_cidr"></a> [ssh\_allowed\_cidr](#input\_ssh\_allowed\_cidr) | CIDR allowed SSH access. Restrict to office/VPN IP in production. | `string` | `"0.0.0.0/0"` | no |
-| <a name="input_ssh_key_name"></a> [ssh\_key\_name](#input\_ssh\_key\_name) | Name of the EC2 key pair for node access. | `string` | n/a | yes |
 | <a name="input_tag_what"></a> [tag\_what](#input\_tag\_what) | Tag: what these resources are. | `string` | n/a | yes |
 | <a name="input_tag_who"></a> [tag\_who](#input\_tag\_who) | Tag: team or individual responsible for these resources. | `string` | n/a | yes |
 | <a name="input_tag_why"></a> [tag\_why](#input\_tag\_why) | Tag: why these resources exist. | `string` | n/a | yes |
@@ -55,7 +56,8 @@ No resources.
 | <a name="output_cluster_name"></a> [cluster\_name](#output\_cluster\_name) | Cluster name — used by generate\_inventory.sh to name the inventory file. |
 | <a name="output_cp_instance_ids"></a> [cp\_instance\_ids](#output\_cp\_instance\_ids) | Map of control plane node key to instance ID (needed for SSM). |
 | <a name="output_cp_private_ips"></a> [cp\_private\_ips](#output\_cp\_private\_ips) | Map of control plane node key to private IP. |
-| <a name="output_vpc_id"></a> [vpc\_id](#output\_vpc\_id) | n/a |
+| <a name="output_ssh_key_ssm_parameter"></a> [ssh\_key\_ssm\_parameter](#output\_ssh\_key\_ssm\_parameter) | SSM Parameter Store path for the cluster SSH private key — used by generate\_inventory.sh. |
+| <a name="output_vpc_id"></a> [vpc\_id](#output\_vpc\_id) | VPC ID for the cluster. |
 | <a name="output_worker_instance_ids"></a> [worker\_instance\_ids](#output\_worker\_instance\_ids) | Map of worker node key to instance ID (needed for SSM). |
 | <a name="output_worker_private_ips"></a> [worker\_private\_ips](#output\_worker\_private\_ips) | Map of worker node key to private IP. |
 <!-- END_TF_DOCS -->
