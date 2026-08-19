@@ -1,19 +1,18 @@
 # CLAUDE.md — K8s Cluster AWS
 
-## What this project is
-
-Terraform + Ansible framework for provisioning and managing multiple independent HA Kubernetes clusters on AWS. A single shared codebase supports any combination of teams, environments, and AWS accounts — only variable files (`.tfvars` + `.hcl`) differ per cluster.
+> **Full requirements, design rationale, and scaling rules**: see [`requirements.md`](requirements.md).
 
 ## Repository layout
 
 ```
 terraform/
-├── modules/               # Shared modules — vpc, security_groups, iam, compute, load_balancer
+├── modules/               # Shared modules — vpc, security_groups, iam, compute, load_balancer, keys
 ├── environments/          # One .tfvars per cluster (team × environment)
 ├── backends/              # One .hcl per cluster — S3 bucket + state key
 ├── bootstrap/             # Creates one S3 state bucket per env tier (run once)
 ├── scripts/
-│   └── generate_inventory.sh
+│   ├── generate_inventory.sh
+│   └── run_tflint.sh      # Wrapper — passes absolute .tflint.hcl path to tflint --recursive
 ├── main.tf                # Module wiring — never changes per cluster
 ├── variables.tf           # All variable declarations
 ├── providers.tf           # AWS provider with optional assume_role
@@ -45,7 +44,7 @@ Adding a new cluster = copy a `.tfvars` + a `.hcl`, update the values, `terrafor
 - **VPC CIDRs must be unique per cluster** when clusters share an AWS account — use distinct `10.x.0.0/16` blocks
 - **Terraform ≥ 1.13** required — uses S3 native locking (`use_lockfile = true`), no DynamoDB
 - **No hardcoded cluster names** in modules or playbooks — always use `var.cluster_name` or dynamic group references
-- **Kubeconfig files must never be committed** — add `*.kubeconfig` to `.gitignore`
+- **Kubeconfig files must never be committed** — `*.kubeconfig` is in `.gitignore`
 - **`environment` must be one of** `dev`, `staging`, `prod` — enforced by variable validation
 - **Bootstrap workspace must match `var.environment`** — enforced by validation; prevents applying to wrong tier
 
@@ -109,31 +108,18 @@ All resources are tagged via `provider default_tags` in `providers.tf`. Tags are
 | `ManagedBy` | hardcoded `"terraform"` |
 | `Who` / `What` / `Why` | `.tfvars` |
 
-## Scaling
-
-- **Add a node**: add an entry to `manager_nodes` or `worker_nodes` in the `.tfvars`, run `terraform apply` — only the new instance is created
-- **Remove a node**: drain it in Kubernetes first (`kubectl drain`), then remove the entry and re-apply
-- **New cluster**: one `.tfvars` + one `.hcl` — no code changes
-- **New team**: same as new cluster
-
 ## Pre-commit hooks
 
-Hooks run on every commit: `terraform fmt`, init-check guards, `terraform validate` (root + bootstrap), `tflint`, `terraform-docs`.
+Hooks run on every commit: `terraform fmt`, `terraform validate` (root + bootstrap), `tflint`, `terraform-docs`.
 
 ```bash
 pre-commit install          # one time after cloning
 pre-commit run --all-files  # run manually
 ```
 
-`terraform init` must be run in `terraform/` and `terraform/bootstrap/` before the validate hooks will pass.
+`terraform init` must be run in `terraform/` and `terraform/bootstrap/` before the validate hooks will pass. If not initialised, validate hooks skip gracefully rather than blocking the commit.
 
-## Kubernetes details
-
-- **Version**: 1.30
-- **Runtime**: containerd
-- **CNI**: Flannel (`10.244.0.0/16`)
-- **Control plane**: HA, 3 nodes, joined via `kubeadm init --upload-certs`
-- **Node access**: AWS SSM only — no public IPs, no bastion
+The `tflint` hook calls `terraform/scripts/run_tflint.sh`, which resolves an absolute path to `.tflint.hcl` — required because `tflint --recursive` resolves `--config` relative to each subdirectory it descends into.
 
 ## SSH key management
 
@@ -145,9 +131,7 @@ Keys are fully Terraform-managed — no manual generation or Console steps.
 | `generate_inventory.sh` | Retrieves private key from SSM (`aws ssm get-parameter --with-decryption`) → writes to `~/.ssh/<cluster_name>` (chmod 600) |
 | Ansible | Uses `~/.ssh/<cluster_name>` via `ansible_ssh_private_key_file` in the inventory |
 
-**Never** manually create or import EC2 key pairs for clusters managed here. **Never** commit key files.
-
-Keys are stable across scale operations — Terraform only creates them once. Scale out/in only touches `aws_instance` resources.
+Keys are stable across scale operations — Terraform only creates them once; `lifecycle { ignore_changes = [value] }` prevents regeneration. Scale out/in only touches `aws_instance` resources.
 
 SSM Parameter Store SecureString is free for standard parameters (< 4 KB). Do not switch to Secrets Manager — it costs $0.40/secret/month with no security benefit for this use case.
 
